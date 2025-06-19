@@ -1,0 +1,596 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Wallet</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Redirect to login page after 2 seconds if not logged in
+    document.addEventListener("DOMContentLoaded", () => {
+      const loggedIn = localStorage.getItem("loggedIn");
+      if (!loggedIn && !window.location.pathname.includes("login.html") && !window.location.pathname.includes("daftar.html")) {
+        setTimeout(() => {
+          window.location.href = "#login";
+        }, 2000);
+      }
+    });
+
+    // Toggle password visibility
+    function toggleVisibility(id, iconId) {
+      const input = document.getElementById(id);
+      const icon = document.getElementById(iconId);
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      icon.textContent = isPassword ? "🙈" : "👁️";
+    }
+
+    // Validate password match for registration
+    function validatePasswordMatch() {
+      const password = document.getElementById("password");
+      const rePassword = document.getElementById("re-password");
+      const message = document.getElementById("password-error");
+      if (password && rePassword && password.value && rePassword.value && password.value !== rePassword.value) {
+        message.style.display = "block";
+        return false;
+      } else if (message) {
+        message.style.display = "none";
+        return true;
+      }
+      return true;
+    }
+
+    // Register user
+    function registerUser() {
+      const name = document.getElementById("name").value.trim();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const rePassword = document.getElementById("re-password").value.trim();
+
+      if (!name || !email || !password || !rePassword) {
+        alert("Semua field harus diisi.");
+        return;
+      }
+
+      if (!validatePasswordMatch()) {
+        return;
+      }
+
+      const user = { name, email, password, avatar: "default-avatar.png" };
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("loggedIn", "true");
+      alert("Akun berhasil dibuat! Silakan login.");
+      window.location.href = "#login";
+    }
+
+    // Login function
+    function login() {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
+
+      if (!email || !password) {
+        alert("Mohon isi semua kolom.");
+        return;
+      }
+
+      const storedUserJSON = localStorage.getItem("user");
+      if (!storedUserJSON) {
+        alert("Akun belum terdaftar. Silakan daftar terlebih dahulu.");
+        return;
+      }
+
+      let storedUser;
+      try {
+        storedUser = JSON.parse(storedUserJSON);
+      } catch (e) {
+        alert("Data akun rusak. Silakan daftar ulang.");
+        localStorage.removeItem("user");
+        return;
+      }
+
+      if (storedUser.email === email && storedUser.password === password) {
+        localStorage.setItem("loggedIn", "true");
+        alert("Login berhasil!");
+        window.location.href = "#dashboard";
+      } else {
+        alert("Email atau password salah!");
+      }
+    }
+
+    // Dashboard logic
+    function initializeDashboard() {
+      const isLoggedIn = localStorage.getItem("loggedIn");
+      const userData = localStorage.getItem("user");
+
+      if (isLoggedIn !== "true" || !userData) {
+        alert("Silakan login terlebih dahulu.");
+        window.location.href = "#login";
+        return;
+      }
+
+      let user;
+      try {
+        user = JSON.parse(userData);
+        document.getElementById("username").textContent = user.name || "User";
+        document.getElementById("user-avatar-header").src = user.avatar || "default-avatar.png";
+        document.getElementById("user-name-header").textContent = user.name || "User";
+      } catch (e) {
+        alert("Data pengguna rusak. Silakan login ulang.");
+        localStorage.removeItem("loggedIn");
+        localStorage.removeItem("user");
+        window.location.href = "#login";
+        return;
+      }
+
+      // Theme toggle
+      const themeCheckbox = document.getElementById("darkModeToggle");
+      const modeIcon = document.getElementById("modeIcon");
+      const savedTheme = localStorage.getItem("theme");
+
+      function updateIcon(theme) {
+        modeIcon.textContent = theme === "dark" ? "⏾" : "☀︎";
+      }
+
+      if (savedTheme === "dark") {
+        document.body.classList.add("dark-mode");
+        themeCheckbox.checked = true;
+        updateIcon("dark");
+      } else {
+        updateIcon("light");
+      }
+
+      themeCheckbox.addEventListener("change", () => {
+        if (themeCheckbox.checked) {
+          document.body.classList.add("dark-mode");
+          localStorage.setItem("theme", "dark");
+          updateIcon("dark");
+        } else {
+          document.body.classList.remove("dark-mode");
+          localStorage.setItem("theme", "light");
+          updateIcon("light");
+        }
+      });
+
+      // Transaction handling
+      function formatRupiah(amount) {
+        return 'Rp ' + amount.toLocaleString('id-ID');
+      }
+
+      function getTransactions() {
+        return JSON.parse(localStorage.getItem("transactions") || "[]");
+      }
+
+      function saveTransactions(data) {
+        localStorage.setItem("transactions", JSON.stringify(data));
+      }
+
+      function updateDashboard() {
+        const all = getTransactions();
+        const tbody = document.querySelector("#transaction-table tbody");
+        const totalTabungan = document.getElementById("total-tabungan");
+        const totalMasukEl = document.getElementById("total-masuk");
+        const totalKeluarEl = document.getElementById("total-keluar");
+        tbody.innerHTML = "";
+        let totalMasuk = 0;
+        let totalKeluar = 0;
+
+        all.forEach((t, index) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${t.tanggal}</td>
+            <td>${t.keterangan}</td>
+            <td class="${t.jenis === 'Pemasukan' ? 'masuk' : 'keluar'}">${t.jenis}</td>
+            <td>${formatRupiah(t.jumlah)}</td>
+            <td>${t.user || "-"}</td>
+            <td class="action-btn-container">
+              <button class="action-btn edit-btn" onclick="editTransaction(${index})">Edit</button>
+              <button class="action-btn delete-btn" onclick="deleteTransaction(${index})">Hapus</button>
+            </td>
+          `;
+          tbody.appendChild(row);
+
+          if (t.jenis === "Pemasukan") totalMasuk += t.jumlah;
+          if (t.jenis === "Pengeluaran") totalKeluar += t.jumlah;
+        });
+
+        totalTabungan.textContent = formatRupiah(totalMasuk - totalKeluar);
+        totalMasukEl.textContent = formatRupiah(totalMasuk);
+        totalKeluarEl.textContent = formatRupiah(totalKeluar);
+      }
+
+      // Format input amount
+      const jumlahInput = document.getElementById("jumlah");
+      jumlahInput.addEventListener("input", function () {
+        let value = this.value.replace(/\D/g, "");
+        this.value = new Intl.NumberFormat("id-ID").format(value);
+      });
+
+      // Add transaction
+      document.getElementById("add-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const tanggal = document.getElementById("tanggal").value;
+        const keterangan = document.getElementById("keterangan").value;
+        const jenis = document.getElementById("jenis").value;
+        const jumlahStr = document.getElementById("jumlah").value;
+        const jumlah = parseInt(jumlahStr.replace(/\./g, ""));
+
+        if (!tanggal || !keterangan || isNaN(jumlah) || jumlah <= 0) {
+          alert("Lengkapi data dengan benar.");
+          return;
+        }
+
+        const all = getTransactions();
+        all.push({ tanggal, keterangan, jenis, jumlah, user: user.name || "User" });
+        saveTransactions(all);
+        updateDashboard();
+        e.target.reset();
+      });
+
+      // Edit transaction modal
+      const modal = document.getElementById("editModal");
+      const modalForm = document.getElementById("edit-form");
+      const modalTanggal = document.getElementById("edit-tanggal");
+      const modalKeterangan = document.getElementById("edit-keterangan");
+      const modalJenis = document.getElementById("edit-jenis");
+      const modalJumlah = document.getElementById("edit-jumlah");
+      const modalUser = document.getElementById("edit-user");
+      let editIndex = null;
+
+      window.editTransaction = (index) => {
+        const all = getTransactions();
+        const t = all[index];
+        editIndex = index;
+
+        modalTanggal.value = t.tanggal;
+        modalKeterangan.value = t.keterangan;
+        modalJenis.value = t.jenis;
+        modalJumlah.value = new Intl.NumberFormat("id-ID").format(t.jumlah);
+        modalUser.textContent = t.user || "-";
+        modal.classList.add("active");
+      };
+
+      document.getElementById("modal-close").addEventListener("click", () => {
+        modal.classList.remove("active");
+      });
+
+      modalJumlah.addEventListener("input", function () {
+        let value = this.value.replace(/\D/g, "");
+        this.value = new Intl.NumberFormat("id-ID").format(value);
+      });
+
+      modalForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (editIndex === null) return;
+
+        const tanggal = modalTanggal.value;
+        const keterangan = modalKeterangan.value;
+        const jenis = modalJenis.value;
+        const jumlahStr = modalJumlah.value;
+        const jumlah = parseInt(jumlahStr.replace(/\./g, ""));
+
+        if (!tanggal || !keterangan || isNaN(jumlah) || jumlah <= 0) {
+          alert("Data tidak valid.");
+          return;
+        }
+
+        const all = getTransactions();
+        all[editIndex] = { tanggal, keterangan, jenis, jumlah, user: user.name || "User" };
+        saveTransactions(all);
+        updateDashboard();
+        modal.classList.remove("active");
+      });
+
+      window.deleteTransaction = (index) => {
+        if (!confirm("Yakin ingin menghapus transaksi ini?")) return;
+        const all = getTransactions();
+        all.splice(index, 1);
+        saveTransactions(all);
+        updateDashboard();
+      };
+
+      // Profile modal
+      function openProfileModal() {
+        const user = JSON.parse(localStorage.getItem("user"));
+        if (user) {
+          document.getElementById("profile-name").value = user.name || "";
+          document.getElementById("profile-email").value = user.email || "";
+          document.getElementById("profile-password").value = user.password || "";
+          document.getElementById("profile-picture-preview").src = user.avatar || "default-avatar.png";
+        }
+        document.getElementById("profileModal").classList.add("active");
+      }
+
+      function closeProfileModal() {
+        document.getElementById("profileModal").classList.remove("active");
+      }
+
+      document.getElementById("profile-picture").addEventListener("change", function () {
+        const file = this.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            document.getElementById("profile-picture-preview").src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      document.getElementById("profile-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        const name = document.getElementById("profile-name").value;
+        const email = document.getElementById("profile-email").value;
+        const password = document.getElementById("profile-password").value;
+        const avatar = document.getElementById("profile-picture-preview").src;
+
+        const updatedUser = { name, email, password, avatar };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        alert("Profil berhasil diperbarui!");
+        document.getElementById("username").textContent = name;
+        document.getElementById("user-avatar-header").src = avatar;
+        document.getElementById("user-name-header").textContent = name;
+        closeProfileModal();
+      });
+
+      // Sync transactions across tabs
+      window.addEventListener("storage", (event) => {
+        if (event.key === "transactions") {
+          updateDashboard();
+        }
+      });
+
+      updateDashboard();
+    }
+
+    // Logout function
+    function logout() {
+      localStorage.removeItem("loggedIn");
+      window.location.href = "#login";
+    }
+
+    // Simple routing for single-page app
+    function renderPage() {
+      const hash = window.location.hash || "#splash";
+      const mainContent = document.getElementById("main-content");
+      mainContent.innerHTML = "";
+
+      if (hash === "#splash") {
+        mainContent.innerHTML = `
+          <h2>My Wallet</h2>
+          <p class="loading">Mengalihkan ke halaman login...</p>
+        `;
+      } else if (hash === "#login") {
+        mainContent.innerHTML = `
+          <div class="background">
+            <div class="login-container">
+              <h1>Login</h1>
+              <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="Enter your email" />
+              </div>
+              <div class="form-group password-group">
+                <label for="password">Password</label>
+                <div class="password-wrapper">
+                  <input type="password" id="password" placeholder="Enter your password" />
+                  <span id="toggle-password" class="toggle-icon" onclick="toggleVisibility('password', 'toggle-password')">👁️</span>
+                </div>
+              </div>
+              <button type="button" class="login-btn" onclick="login()">Login</button>
+              <div class="register-link">
+                <a href="#daftar">Belum punya akun? Daftar di sini</a>
+              </div>
+              <div class="footer">
+                <p>© Copyright 2025 Wukong. All Rights Reserved.</p>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (hash === "#daftar") {
+        mainContent.innerHTML = `
+          <div class="background">
+            <div class="login-container">
+              <h1>Register Account</h1>
+              <div class="form-group">
+                <label for="name">Your Name</label>
+                <input type="text" id="name" placeholder="Enter your Name" />
+              </div>
+              <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="Enter your email" />
+              </div>
+              <div class="form-group">
+                <label for="password">Password</label>
+                <div class="password-wrapper">
+                  <input type="password" id="password" placeholder="Enter your password" oninput="validatePasswordMatch()" />
+                  <span class="toggle-icon" id="toggle-pass1" onclick="toggleVisibility('password', 'toggle-pass1')">👁️</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="re-password">Re-Password</label>
+                <div class="password-wrapper">
+                  <input type="password" id="re-password" placeholder="Enter your password again" oninput="validatePasswordMatch()" />
+                  <span class="toggle-icon" id="toggle-pass2" onclick="toggleVisibility('re-password', 'toggle-pass2')">👁️</span>
+                </div>
+              </div>
+              <p id="password-error" class="error-text" style="display:none; color:red;">Password tidak sama!</p>
+              <div class="button-group">
+                <button type="button" class="login-btn" onclick="registerUser()">Register</button>
+                <button type="button" class="cancel-btn" onclick="window.location.href='#login'">Cancel</button>
+              </div>
+              <div class="footer">
+                <p>© Copyright 2025 Wukong. All Rights Reserved.</p>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (hash === "#dashboard") {
+        mainContent.innerHTML = `
+          <div class="dashboard">
+            <header>
+              <div class="user-info" style="display: flex; align-items: center; gap: 10px;">
+                <img id="user-avatar-header" onclick="openProfileModal()" style="cursor: pointer;" src="default-avatar.png" alt="Avatar" />
+                <span id="user-name-header" class="profile-name"></span>
+              </div>
+              <h1 style="margin-top: 20px;">Selamat Datang, <span id="username"></span> 👋</h1>
+              <div class="theme-toggle">
+                <label for="darkModeToggle" id="modeIcon">☀︎</label>
+                <input type="checkbox" id="darkModeToggle" />
+                <button class="logout-btn" onclick="logout()">Logout</button>
+              </div>
+            </header>
+            <section class="summary">
+              <div class="card">
+                <h2>Total Tabungan</h2>
+                <p id="total-tabungan">Rp 0</p>
+              </div>
+              <div class="card">
+                <h2>Pemasukan</h2>
+                <p id="total-masuk">Rp 0</p>
+              </div>
+              <div class="card">
+                <h2>Pengeluaran</h2>
+                <p id="total-keluar">Rp 0</p>
+              </div>
+            </section>
+            <section class="transaction-add">
+              <h2>Tambah Transaksi</h2>
+              <form id="add-form">
+                <input type="date" id="tanggal" required />
+                <input type="text" id="keterangan" placeholder="Keterangan" required />
+                <select id="jenis" required>
+                  <option value="Pemasukan">Pemasukan</option>
+                  <option value="Pengeluaran">Pengeluaran</option>
+                </select>
+                <input type="text" id="jumlah" placeholder="Jumlah" required />
+                <button type="submit">Tambah</button>
+              </form>
+            </section>
+            <section class="transaction">
+              <h2>Riwayat Transaksi</h2>
+              <table id="transaction-table">
+                <thead>
+                  <tr>
+                    <th>Tanggal</th>
+                    <th>Keterangan</th>
+                    <th>Jenis</th>
+                    <th>Jumlah</th>
+                    <th>User</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </section>
+            <div class="modal" id="editModal">
+              <div class="modal-content">
+                <h3>Edit Transaksi</h3>
+                <form id="edit-form">
+                  <label for="edit-tanggal">Tanggal</label>
+                  <input type="date" id="edit-tanggal" required />
+                  <label for="edit-keterangan">Keterangan</label>
+                  <input type="text" id="edit-keterangan" required />
+                  <label for="edit-jenis">Jenis</label>
+                  <select id="edit-jenis" required>
+                    <option value="Pemasukan">Pemasukan</option>
+                    <option value="Pengeluaran">Pengeluaran</option>
+                  </select>
+                  <label for="edit-jumlah">Jumlah</label>
+                  <input type="text" id="edit-jumlah" required />
+                  <label>User yang input:</label>
+                  <p id="edit-user" style="font-weight:600; margin-top:0;">-</p>
+                  <div class="modal-actions">
+                    <button type="button" class="cancel-btn" id="modal-close">Batal</button>
+                    <button type="submit" class="save-btn">Simpan</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            <div class="modal" id="profileModal">
+              <div class="modal-content">
+                <h3>Profil Pengguna</h3>
+                <form id="profile-form">
+                  <div style="text-align: center; margin-bottom: 1rem;">
+                    <img id="profile-picture-preview" src="default-avatar.png" alt="Foto Profil" />
+                    <input type="file" id="profile-picture" accept="image/*" style="margin-top: 0.5rem;" />
+                  </div>
+                  <label for="profile-name">Nama</label>
+                  <input type="text" id="profile-name" required />
+                  <label for="profile-email">Email</label>
+                  <input type="email" id="profile-email" required />
+                  <label for="profile-password">Password</label>
+                  <div style="position: relative;">
+                    <input type="password" id="profile-password" required style="padding-right: 30px;" />
+                    <span onclick="toggleVisibility('profile-password', 'toggle-profile-pass')" id="toggle-profile-pass" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer;">👁️</span>
+                  </div>
+                  <div class="modal-actions">
+                    <button type="button" class="cancel-btn" onclick="closeProfileModal()">Batal</button>
+                    <button type="submit" class="save-btn">Simpan</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            <footer>
+              <p>© Copyright 2025 Wukong. All Rights Reserved. | Tabungan App</p>
+            </footer>
+          </div>
+        `;
+        initializeDashboard();
+      }
+
+      // Re-attach event listeners for login and register
+      const loginBtn = document.querySelector(".login-btn");
+      if (loginBtn && hash === "#login") {
+        loginBtn.addEventListener("click", login);
+      }
+      const registerBtn = document.querySelector(".login-btn[onclick='registerUser()']");
+      if (registerBtn && hash === "#daftar") {
+        registerBtn.addEventListener("click", registerUser);
+      }
+    }
+
+    window.addEventListener("hashchange", renderPage);
+    window.addEventListener("load", renderPage);
+  </script>
+</head>
+<body>
+  <div id="main-content"></div>
+</body>
+</html>
